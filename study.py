@@ -457,28 +457,24 @@ import random
 #     return list1[-2]
 # list1 = [1,12,2,3,4,5,6]
 # print(func5(list1))
-import json
 
-# JSON 文件路径
-json_file = r'F:\shujuji\annotations\instances_val2017.json'
 
-# 检查映射关系是否正确
-# 这里按你描述的规则
-# helmet → 1, head → 2, person → 3
-valid_ids = {1, 2, 3}
-
-with open(json_file, 'r', encoding='utf-8') as f:
-    data = json.load(f)
-
-errors = []
-for ann in data['annotations']:
-    cat_id = ann['category_id']
-    if cat_id not in valid_ids:
-        errors.append((ann['id'], cat_id))
-
-if not errors:
-    print("✅ 所有 category_id 都是合法值 (1, 2, 3)。")
-else:
-    print(f"❌ 发现 {len(errors)} 个非法 category_id:")
-    for ann_id, cat_id in errors:
-        print(f"  annotation id={ann_id}, category_id={cat_id}")
+def twoSum(nums, target):
+    """
+    :type nums: List[int]
+    :type target: int
+    :rtype: List[int]
+    """
+    result = []
+    i = 0 
+    while i < len(nums):
+        j = i +1
+        while j < len(nums):
+            if nums[i]+ nums[j] == target:
+                result = [i,j]
+            j = j+1
+        i = i+1
+    return result
+nums = [2,7,11,15]
+target = 9
+print (twoSum(nums, target))

@@ -21,3 +21,24 @@ output/
 output/ 
 *.avi 
 *.mp4 
+# 大模型文件
+*.pth
+*.pt
+output/checkpoint_*.pth
+
+# 环境和缓存
+detr_env/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# 大数据文件
+helmet_coco1/
+panopticapi/
+shujuji/
+shujuji111/
+
+# 其他临时文件
+temp.py
+参数.txt
+生成预训练.py
