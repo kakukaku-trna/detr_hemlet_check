@@ -29,7 +29,7 @@ class CocoDetection(TvCocoDetection):
                                             cache_mode=cache_mode, local_rank=local_rank, local_size=local_size)
         self._transforms = transforms
         self.prepare = ConvertCocoPolysToMask(return_masks)
-
+#修改clamp boxes 到图片范围内
     def __getitem__(self, idx):
         img, target = super(CocoDetection, self).__getitem__(idx)
         image_id = self.ids[idx]
@@ -38,8 +38,38 @@ class CocoDetection(TvCocoDetection):
         if self._transforms is not None:
             img, target = self._transforms(img, target)
         return img, target
+#上面替换为下面
+    # def __getitem__(self, idx):
+    #     img, target = super(CocoDetection, self).__getitem__(idx)
+    #     image_id = self.ids[idx]
+    #     target = {'image_id': image_id, 'annotations': target}
+    #     img, target = self.prepare(img, target)
 
+    #     # 修复 boxes
+    #     boxes = target['boxes']
+    #     labels = target['labels']
 
+    #     # clamp boxes 到图像范围
+    #     boxes[:, 0::2] = boxes[:, 0::2].clamp(0, img.width)
+    #     boxes[:, 1::2] = boxes[:, 1::2].clamp(0, img.height)
+
+    #     # 保留合法 box: x2 > x1 且 y2 > y1
+    #     keep = (boxes[:, 2] > boxes[:, 0]) & (boxes[:, 3] > boxes[:, 1])
+    #     boxes = boxes[keep]
+    #     labels = labels[keep]
+
+    #     # 如果没有合法 box，创建一个 dummy box，防止 matcher 报错
+    #     if len(boxes) == 0:
+    #         boxes = torch.zeros((1, 4), dtype=torch.float32)
+    #         labels = torch.zeros((1,), dtype=torch.int64)
+
+    #     target['boxes'] = boxes
+    #     target['labels'] = labels
+
+    #     if self._transforms is not None:
+    #         img, target = self._transforms(img, target)
+    #     return img, target
+#替换完毕
 def convert_coco_poly_to_mask(segmentations, height, width):
     masks = []
     for polygons in segmentations:

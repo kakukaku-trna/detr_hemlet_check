@@ -8,6 +8,7 @@
 # ------------------------------------------------------------------------
 
 
+import os
 import argparse
 import datetime
 import json
@@ -35,8 +36,8 @@ def get_args_parser():
     parser.add_argument('--lr_linear_proj_mult', default=0.1, type=float)
     parser.add_argument('--batch_size', default=2, type=int)
     parser.add_argument('--weight_decay', default=1e-4, type=float)
-    parser.add_argument('--epochs', default=50, type=int)
-    parser.add_argument('--lr_drop', default=40, type=int)
+    parser.add_argument('--epochs', default=400, type=int)
+    parser.add_argument('--lr_drop', default=120, type=int)
     parser.add_argument('--lr_drop_epochs', default=None, type=int, nargs='+')
     parser.add_argument('--clip_max_norm', default=0.1, type=float,
                         help='gradient clipping max norm')
@@ -111,7 +112,7 @@ def get_args_parser():
     parser.add_argument('--coco_panoptic_path', type=str)
     parser.add_argument('--remove_difficult', action='store_true')
 
-    parser.add_argument('--output_dir', default='',
+    parser.add_argument('--output_dir', default='/home/jiangyang.li2/detr_hemlet_check/Deformable-DETR/output_dd',
                         help='path where to save, empty for no saving')
     parser.add_argument('--device', default='cuda',
                         help='device to use for training / testing')
@@ -123,7 +124,19 @@ def get_args_parser():
     parser.add_argument('--num_workers', default=2, type=int)
     parser.add_argument('--cache_mode', default=False, action='store_true', help='whether to cache images on memory')
 
+    #我自己改过的
+    parser.add_argument('--num_classes', default=3, type=int)
+
     return parser
+
+def save_checkpoint(path, model, optimizer, lr_scheduler, epoch, best_map):
+    torch.save({
+        'model': model.state_dict(),
+        'optimizer': optimizer.state_dict(),
+        'lr_scheduler': lr_scheduler.state_dict(),
+        'epoch': epoch,
+        'best_map': best_map,
+    }, path)
 
 
 def main(args):
@@ -269,7 +282,21 @@ def main(args):
 
     print("Start training")
     start_time = time.time()
+    
+    best_map = 0.0   # ✅ 新增（放在 for epoch 外）自己加的
     for epoch in range(args.start_epoch, args.epochs):
+        #每5轮保存
+        if epoch % 5 == 0:
+            save_checkpoint(
+                os.path.join(args.output_dir, f'checkpoint_{epoch}.pth'),
+                model_without_ddp,
+                optimizer,
+                lr_scheduler,
+                epoch,
+                best_map
+            )
+        #每5轮保存
+
         if args.distributed:
             sampler_train.set_epoch(epoch)
         train_stats = train_one_epoch(
@@ -288,6 +315,27 @@ def main(args):
                     'epoch': epoch,
                     'args': args,
                 }, checkpoint_path)
+        # ---------------- 新增：保存最佳模型 ----------------
+        # 在训练循环里 eval 后加入
+        test_stats, coco_evaluator = evaluate(
+            model, criterion, postprocessors, data_loader_val,  base_ds,device, args.output_dir
+        )
+        
+        
+        # 如果当前 mAP 更高，就保存为 best.pth
+        current_map = test_stats["coco_eval_bbox"][0]  # bbox mAP
+        if current_map > best_map:
+            best_map = current_map
+            save_checkpoint(
+                os.path.join(args.output_dir, 'best.pth'),
+                model_without_ddp,
+                optimizer,
+                lr_scheduler,
+                epoch,
+                best_map
+            )
+            print(f"Saved new best model at epoch {epoch} with mAP {best_map:.4f}")
+        # ---------------- 新增：保存最佳模型 ----------------
 
         test_stats, coco_evaluator = evaluate(
             model, criterion, postprocessors, data_loader_val, base_ds, device, args.output_dir

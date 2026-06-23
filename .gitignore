@@ -1,0 +1,28 @@
+# 缓存和编译
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+
+# 检查点和模型
+checkpoints/
+output_*/
+*.pth
+*.pt
+
+# 临时文件和输出
+temp/
+temp_*
+test_*.py
+=0.6.0
+*.md~
+
+# 构建
+models/ops/build/
+models/ops/dist/

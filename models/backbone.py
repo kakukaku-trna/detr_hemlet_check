@@ -129,10 +129,74 @@ class Joiner(nn.Sequential):
         return out, pos
 
 
+class ConvNeXtBackbone(nn.Module):
+    """ConvNeXt backbone for Deformable DETR"""
+    def __init__(self, name: str, train_backbone: bool, return_interm_layers: bool, pretrained: bool = True):
+        super().__init__()
+        try:
+            import timm
+        except ImportError:
+            raise ImportError("Please install timm: pip install timm>=0.6.0")
+
+        # Only load pretrained weights if explicitly requested and available
+        load_pretrained = pretrained and is_main_process()
+        try:
+            model = timm.create_model(name, pretrained=load_pretrained, features_only=True,
+                                     out_indices=(1, 2, 3))
+        except Exception as e:
+            # If pretrained weights fail to load, try without pretrained
+            print(f"Warning: Failed to load pretrained weights ({e}). Loading model without pretrained weights.")
+            model = timm.create_model(name, pretrained=False, features_only=True,
+                                     out_indices=(1, 2, 3))
+
+        self.model = model
+        self.return_interm_layers = return_interm_layers
+
+        # Get feature dimensions for different ConvNeXt variants
+        if 'convnext_tiny' in name:
+            self.num_channels = [192, 384, 768]  # stages 1, 2, 3 (0-indexed)
+        elif 'convnext_small' in name:
+            self.num_channels = [192, 384, 768]
+        elif 'convnext_base' in name:
+            self.num_channels = [256, 512, 1024]
+        elif 'convnext_large' in name:
+            self.num_channels = [384, 768, 1536]
+        elif 'convnext_xlarge' in name:
+            self.num_channels = [512, 1024, 2048]
+        else:
+            raise ValueError(f"Unknown ConvNeXt variant: {name}")
+
+        self.strides = [8, 16, 32]
+
+        # Freeze backbone for training
+        if not train_backbone:
+            for param in self.model.parameters():
+                param.requires_grad = False
+
+    def forward(self, tensor_list: NestedTensor):
+        xs = self.model(tensor_list.tensors)
+        out: Dict[str, NestedTensor] = {}
+
+        for i, x in enumerate(xs):
+            m = tensor_list.mask
+            assert m is not None
+            mask = F.interpolate(m[None].float(), size=x.shape[-2:]).to(torch.bool)[0]
+            out[str(i)] = NestedTensor(x, mask)
+
+        return out
+
+
 def build_backbone(args):
     position_embedding = build_position_encoding(args)
     train_backbone = args.lr_backbone > 0
     return_interm_layers = args.masks or (args.num_feature_levels > 1)
-    backbone = Backbone(args.backbone, train_backbone, return_interm_layers, args.dilation)
+
+    # Support both ResNet and ConvNeXt backbones
+    if args.backbone.startswith('convnext'):
+        backbone = ConvNeXtBackbone(args.backbone, train_backbone, return_interm_layers,
+                                   pretrained=is_main_process())
+    else:
+        backbone = Backbone(args.backbone, train_backbone, return_interm_layers, args.dilation)
+
     model = Joiner(backbone, position_embedding)
     return model
