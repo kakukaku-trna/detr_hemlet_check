@@ -11,6 +11,7 @@
 Backbone modules.
 """
 from collections import OrderedDict
+import os
 
 import torch
 import torch.nn.functional as F
@@ -131,23 +132,51 @@ class Joiner(nn.Sequential):
 
 class ConvNeXtBackbone(nn.Module):
     """ConvNeXt backbone for Deformable DETR"""
-    def __init__(self, name: str, train_backbone: bool, return_interm_layers: bool, pretrained: bool = True):
+    def __init__(self, name: str, train_backbone: bool, return_interm_layers: bool, pretrained: bool = True,
+                 pretrained_weights_path: str = None):
         super().__init__()
         try:
             import timm
         except ImportError:
             raise ImportError("Please install timm: pip install timm>=0.6.0")
 
-        # Only load pretrained weights if explicitly requested and available
-        load_pretrained = pretrained and is_main_process()
-        try:
-            model = timm.create_model(name, pretrained=load_pretrained, features_only=True,
-                                     out_indices=(1, 2, 3))
-        except Exception as e:
-            # If pretrained weights fail to load, try without pretrained
-            print(f"Warning: Failed to load pretrained weights ({e}). Loading model without pretrained weights.")
-            model = timm.create_model(name, pretrained=False, features_only=True,
-                                     out_indices=(1, 2, 3))
+        # Create model without pretrained weights first
+        model = timm.create_model(name, pretrained=False, features_only=True,
+                                 out_indices=(1, 2, 3))
+
+        # Load weights from local path if provided
+        if pretrained_weights_path and os.path.exists(pretrained_weights_path):
+            if is_main_process():
+                print(f"Loading pretrained weights from: {pretrained_weights_path}")
+            try:
+                if pretrained_weights_path.endswith('.safetensors'):
+                    from safetensors.torch import load_file
+                    state_dict = load_file(pretrained_weights_path)
+                else:
+                    state_dict = torch.load(pretrained_weights_path, map_location='cpu')
+                    if 'state_dict' in state_dict:
+                        state_dict = state_dict['state_dict']
+
+                model.load_state_dict(state_dict, strict=False)
+                if is_main_process():
+                    print(f"Successfully loaded weights from {pretrained_weights_path}")
+            except Exception as e:
+                print(f"Warning: Failed to load weights from {pretrained_weights_path}: {e}")
+                if pretrained and is_main_process():
+                    print("Falling back to downloading pretrained weights from timm...")
+                    try:
+                        model = timm.create_model(name, pretrained=True, features_only=True,
+                                                 out_indices=(1, 2, 3))
+                    except Exception as e2:
+                        print(f"Warning: Failed to download pretrained weights: {e2}")
+        elif pretrained and is_main_process():
+            # Download from timm if no local path provided and pretrained=True
+            try:
+                print(f"Loading pretrained weights for {name} from timm hub...")
+                model = timm.create_model(name, pretrained=True, features_only=True,
+                                         out_indices=(1, 2, 3))
+            except Exception as e:
+                print(f"Warning: Failed to load pretrained weights ({e}). Loading model without pretrained weights.")
 
         self.model = model
         self.return_interm_layers = return_interm_layers
@@ -193,8 +222,10 @@ def build_backbone(args):
 
     # Support both ResNet and ConvNeXt backbones
     if args.backbone.startswith('convnext'):
+        pretrained_weights_path = getattr(args, 'backbone_weights', None)
         backbone = ConvNeXtBackbone(args.backbone, train_backbone, return_interm_layers,
-                                   pretrained=is_main_process())
+                                   pretrained=not pretrained_weights_path,  # Don't download if local path provided
+                                   pretrained_weights_path=pretrained_weights_path)
     else:
         backbone = Backbone(args.backbone, train_backbone, return_interm_layers, args.dilation)
 
