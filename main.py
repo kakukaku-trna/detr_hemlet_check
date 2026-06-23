@@ -149,6 +149,18 @@ def main(args):
         assert args.masks, "Frozen training is meant for segmentation only"
     print(args)
 
+    # Handle CUDA driver/library version mismatch
+    if 'cuda' in args.device.lower():
+        try:
+            test_tensor = torch.zeros(1, device=args.device)
+        except RuntimeError as e:
+            if 'NVML_SUCCESS' in str(e) or 'Driver' in str(e) or 'CUDA' in str(e):
+                print(f"⚠️  CUDA initialization failed: {e}")
+                print("Falling back to CPU. To use GPU, update CUDA drivers.")
+                args.device = 'cpu'
+            else:
+                raise
+
     device = torch.device(args.device)
 
     # fix the seed for reproducibility
@@ -283,6 +295,10 @@ def main(args):
         return
 
     print("Start training")
+    # Clear CUDA cache to avoid memory fragmentation issues
+    if device.type == 'cuda':
+        torch.cuda.empty_cache()
+        torch.cuda.reset_peak_memory_stats()
     start_time = time.time()
     
     best_map = 0.0   # ✅ 新增（放在 for epoch 外）自己加的
