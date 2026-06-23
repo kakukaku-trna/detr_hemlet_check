@@ -216,7 +216,10 @@ class DeformableTransformerEncoderLayer(nn.Module):
         return tensor if pos is None else tensor + pos
 
     def forward_ffn(self, src):
-        src2 = self.linear2(self.dropout2(self.activation(self.linear1(src))))
+        src2 = self.linear1(src)
+        src2 = self.activation(src2)
+        src2 = self.dropout2(src2)
+        src2 = self.linear2(src2)
         src = src + self.dropout3(src2)
         src = self.norm2(src)
         return src
@@ -372,11 +375,12 @@ def _get_clones(module, N):
 def _get_activation_fn(activation):
     """Return an activation function given a string"""
     if activation == "relu":
-        return F.relu
+        # Use module instead of functional to avoid CUDA memory fragmentation
+        return nn.ReLU(inplace=True)
     if activation == "gelu":
-        return F.gelu
+        return nn.GELU()
     if activation == "glu":
-        return F.glu
+        return nn.GLU()
     raise RuntimeError(F"activation should be relu/gelu, not {activation}.")
 
 

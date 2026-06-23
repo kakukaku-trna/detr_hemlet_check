@@ -116,7 +116,7 @@ def get_args_parser():
 
     parser.add_argument('--output_dir', default='/home/jiangyang.li2/detr_hemlet_check/Deformable-DETR/output_dd',
                         help='path where to save, empty for no saving')
-    parser.add_argument('--device', default='cuda',
+    parser.add_argument('--device', default='cpu',
                         help='device to use for training / testing')
     parser.add_argument('--seed', default=42, type=int)
     parser.add_argument('--resume', default='', help='resume from checkpoint')
